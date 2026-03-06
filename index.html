@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Ojaja Resort — Interactive Map</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:        #0E1A0A;
+    --surface:   #162010;
+    --surface2:  #1E2D14;
+    --border:    #2E4020;
+    --gold:      #C8963C;
+    --gold-light:#E8C87A;
+    --cream:     #F5EDD8;
+    --muted:     #6A7D58;
+    --chalet:    #D4782A;
+    --amenity:   #2A8FA8;
+    --sports:    #3A9E5A;
+    --cultural:  #9B6BB5;
+    --admin:     #B8860B;
+    --landmark:  #C0392B;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  body {
+    font-family: 'Lato', sans-serif;
+    background: var(--bg);
+    color: var(--cream);
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    flex-shrink: 0;
+    gap: 10px;
+  }
+
+  #topbar h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    color: var(--gold-light);
+    white-space: nowrap;
+    line-height: 1;
+  }
+  #topbar h1 span { font-style: italic; color: var(--muted); font-size: 13px; display:block; }
+
+  #search-wrap {
+    flex: 1;
+    max-width: 340px;
+    position: relative;
+  }
+  #search-wrap svg {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    opacity: 0.45; pointer-events: none;
+  }
+  #search {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 8px 12px 8px 34px;
+    color: var(--cream);
+    font-family: 'Lato', sans-serif;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #search::placeholder { color: var(--muted); }
+  #search:focus { border-color: var(--gold); }
+
+  #gps-btn {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--gold);
+    border: none;
+    border-radius: 24px;
+    padding: 8px 14px;
+    color: #0E1A0A;
+    font-family: 'Lato', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  #gps-btn:hover { background: var(--gold-light); }
+  #gps-btn.active { background: var(--sports); color: #fff; }
+  #gps-btn .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+    animation: gpspulse 1.5s infinite;
+  }
+  @keyframes gpspulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:0.4; transform:scale(0.6); }
+  }
+
+  /* ── FILTER BAR ── */
+  #filters {
+    display: flex;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: none;
+  }
+  #filters::-webkit-scrollbar { display: none; }
+  .filter-btn {
+    padding: 5px 13px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: 'Lato', sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .filter-btn.on {
+    color: #0E1A0A;
+    border-color: transparent;
+  }
+
+  /* ── MAIN LAYOUT ── */
+  #main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ── MAP ── */
+  #map-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 40% 55%, #1E3A10 0%, #162010 45%, #0E1A0A 100%);
+    touch-action: none;
+  }
+
+  #map-canvas {
+    position: absolute;
+    transform-origin: 0 0;
+    cursor: grab;
+    user-select: none;
+  }
+  #map-canvas:active { cursor: grabbing; }
+
+  /* SVG map bg */
+  #map-svg {
+    display: block;
+  }
+
+  /* Marker */
+  .marker {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    z-index: 5;
+    transition: opacity 0.2s;
+  }
+  .marker.dimmed { opacity: 0.12; pointer-events: none; }
+  .marker-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 7px;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  }
+  .marker.selected .marker-dot {
+    width: 20px; height: 20px;
+    font-size: 10px;
+    border-color: #fff;
+    box-shadow: 0 0 0 4px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.6);
+  }
+  .marker-label {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-size: 9px;
+    font-family: 'Lato', sans-serif;
+    background: rgba(10,18,6,0.85);
+    padding: 2px 5px;
+    border-radius: 4px;
+    pointer-events: none;
+    color: #D0C090;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  .marker.selected .marker-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #F5EDD8;
+    max-width: 130px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  /* GPS dot */
+  #gps-dot-wrap {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    z-index: 20;
+    pointer-events: none;
+    display: none;
+  }
+  #gps-dot-wrap.visible { display: block; }
+  #gps-ring {
+    position: absolute;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: rgba(30, 144, 255, 0.15);
+    border: 1px solid rgba(30,144,255,0.3);
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    animation: gpsring 2s infinite;
+  }
+  @keyframes gpsring {
+    0%   { transform: translate(-50%,-50%) scale(0.6); opacity:0.8; }
+    100% { transform: translate(-50%,-50%) scale(2.2); opacity:0; }
+  }
+  #gps-core {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #1E90FF;
+    border: 2px solid #fff;
+    box-shadow: 0 0 10px rgba(30,144,255,0.7);
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Pulse ring for selected */
+  .pulse-ring {
+    position: absolute;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    animation: selring 1.5s infinite;
+    pointer-events: none;
+  }
+  @keyframes selring {
+    0%   { transform:translate(-50%,-50%) scale(0.5); opacity:0.9; }
+    100% { transform:translate(-50%,-50%) scale(2.2); opacity:0; }
+  }
+
+  /* ── BOTTOM SHEET ── */
+  #sheet {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-radius: 18px 18px 0 0;
+    z-index: 50;
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.32,0.72,0,1);
+    max-height: 70vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  #sheet.open { transform: translateY(0); }
+
+  #sheet-handle {
+    width: 36px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 10px auto 0;
+    flex-shrink: 0;
+  }
+
+  #sheet-head {
+    padding: 10px 16px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  #sheet-icon { font-size: 24px; line-height: 1; }
+  #sheet-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    color: var(--cream);
+    line-height: 1.2;
+  }
+  #sheet-cat {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-top: 3px;
+  }
+  #sheet-close {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    width: 28px; height: 28px;
+    color: var(--muted);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  #dir-btn {
+    margin: 12px 16px;
+    padding: 12px;
+    background: var(--gold);
+    border: none;
+    border-radius: 10px;
+    color: #0E1A0A;
+    font-family: 'Lato', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  #dir-btn:hover { background: var(--gold-light); }
+
+  #directions-wrap {
+    overflow-y: auto;
+    padding: 0 16px 24px;
+    flex: 1;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  #dir-from {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .dir-step {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+    align-items: flex-start;
+  }
+  .step-num {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .step-num.start { background: var(--sports); border-color: var(--sports); color: #fff; }
+  .step-num.end   { background: var(--gold);   border-color: var(--gold);   color: #0E1A0A; }
+  .step-text { color: #C8B888; font-size: 13px; line-height: 1.5; padding-top: 3px; }
+
+  /* ── DESKTOP SIDEBAR ── */
+  @media (min-width: 700px) {
+    #sheet {
+      position: relative;
+      transform: none !important;
+      border-radius: 0;
+      border-top: none;
+      border-left: 1px solid var(--border);
+      width: 300px;
+      flex-shrink: 0;
+      max-height: none;
+      order: 1;
+      right: 0;
+    }
+    #main { flex-direction: row; }
+    #sheet-handle { display: none; }
+    #map-wrap { order: 0; }
+    body { flex-direction: column; }
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 80px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: rgba(10,18,6,0.95);
+    border: 1px solid var(--border);
+    color: var(--cream);
+    padding: 10px 18px;
+    border-radius: 24px;
+    font-size: 13px;
+    z-index: 999;
+    opacity: 0;
+    transition: all 0.3s;
+    pointer-events: none;
+    text-align: center;
+    max-width: 280px;
+  }
+  #toast.show { opacity:1; transform: translateX(-50%) translateY(0); }
+
+  /* Legend */
+  #legend {
+    position: absolute;
+    bottom: 16px; right: 16px;
+    background: rgba(14,26,10,0.92);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .legend-title { font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .legend-row { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { font-size: 10px; color: var(--muted); }
+
+  /* Compass */
+  #compass {
+    position: absolute;
+    top: 14px; right: 16px;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: rgba(14,26,10,0.88);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 10;
+    pointer-events: none;
+    gap: 0;
+  }
+  #compass span:first-child { color: var(--gold); font-size: 11px; font-weight:700; line-height:1; }
+  #compass span:last-child  { color: var(--muted); font-size: 16px; line-height:1; }
+
+  /* zoom btns */
+  #zoom-btns {
+    position: absolute;
+    top: 60px; right: 16px;
+    display: flex; flex-direction: column; gap: 4px;
+    z-index: 10;
+  }
+  .zoom-btn {
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(14,26,10,0.88);
+    color: var(--gold-light);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .zoom-btn:hover { background: var(--surface2); }
+
+  /* loading */
+  #loader {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 9999;
+    transition: opacity 0.6s;
+  }
+  #loader.hide { opacity:0; pointer-events:none; }
+  #loader h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    color: var(--gold-light);
+    margin-bottom: 6px;
+  }
+  #loader p { color: var(--muted); font-size: 13px; }
+  .loader-bar {
+    width: 160px; height: 2px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 20px;
+    overflow: hidden;
+  }
+  .loader-fill {
+    height: 100%;
+    background: var(--gold);
+    border-radius: 2px;
+    animation: loadfill 1.2s ease forwards;
+  }
+  @keyframes loadfill { from{width:0} to{width:100%} }
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <h2>Ojaja Resort</h2>
+  <p>Loading interactive map…</p>
+  <div class="loader-bar"><div class="loader-fill"></div></div>
+</div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1>Ojaja Resort <span>Interactive Map</span></h1>
+  <div id="search-wrap">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C8963C" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input id="search" type="text" placeholder="Search locations…" autocomplete="off"/>
+  </div>
+  <button id="gps-btn" onclick="startGPS()">
+    <div class="dot"></div> Live Location
+  </button>
+</div>
+
+<!-- FILTERS -->
+<div id="filters">
+  <button class="filter-btn on" data-cat="all" style="background:var(--gold);color:#0E1A0A;border-color:var(--gold)">All</button>
+  <button class="filter-btn" data-cat="chalet"   style="--c:var(--chalet)">🏠 Chalets</button>
+  <button class="filter-btn" data-cat="amenity"  style="--c:var(--amenity)">✨ Amenities</button>
+  <button class="filter-btn" data-cat="sports"   style="--c:var(--sports)">⚽ Sports</button>
+  <button class="filter-btn" data-cat="cultural" style="--c:var(--cultural)">🎨 Cultural</button>
+  <button class="filter-btn" data-cat="admin"    style="--c:var(--admin)">🏢 Admin</button>
+  <button class="filter-btn" data-cat="landmark" style="--c:var(--landmark)">📍 Landmarks</button>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <!-- MAP -->
+  <div id="map-wrap">
+    <div id="map-canvas">
+      <!-- SVG background roads -->
+      <svg id="map-svg" width="900" height="780" viewBox="0 0 900 780">
+        <!-- Ground -->
+        <rect width="900" height="780" fill="#162010"/>
+        <!-- Subtle grid -->
+        <defs>
+          <pattern id="grid" width="45" height="39" patternUnits="userSpaceOnUse">
+            <path d="M 45 0 L 0 0 0 39" fill="none" stroke="rgba(255,255,255,0.025)" stroke-width="0.5"/>
+          </pattern>
+          <!-- Tree symbol -->
+          <g id="tree">
+            <circle cx="0" cy="-6" r="7" fill="#1E3A10" opacity="0.7"/>
+            <circle cx="-5" cy="-2" r="6" fill="#1A3208" opacity="0.6"/>
+            <circle cx="5" cy="-2" r="6" fill="#243A10" opacity="0.6"/>
+            <rect x="-1.5" y="0" width="3" height="8" fill="#3A2810" opacity="0.5"/>
+          </g>
+        </defs>
+        <rect width="900" height="780" fill="url(#grid)"/>
+
+        <!-- === ROADS === -->
+        <!-- Road color: dark tarmac -->
+        <g fill="none" stroke="#232E18" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Main N-S spine -->
+          <line x1="385" y1="730" x2="385" y2="60"/>
+          <!-- Top E-W road -->
+          <line x1="120" y1="60" x2="830" y2="60"/>
+          <!-- Upper E-W road (below top chalets) -->
+          <line x1="200" y1="130" x2="830" y2="130"/>
+          <!-- Mid E-W road (Queen Aderonke Blvd) -->
+          <line x1="200" y1="340" x2="750" y2="340"/>
+          <!-- Arena level E-W -->
+          <line x1="70" y1="440" x2="750" y2="440"/>
+          <!-- Lower E-W -->
+          <line x1="70" y1="530" x2="750" y2="530"/>
+          <!-- Bottom service road -->
+          <line x1="260" y1="620" x2="680" y2="620"/>
+          <!-- West loop road -->
+          <line x1="120" y1="60" x2="70" y2="440"/>
+          <line x1="70" y1="440" x2="70" y2="600"/>
+          <!-- East road -->
+          <line x1="750" y1="60" x2="750" y2="540"/>
+          <!-- Far east road -->
+          <line x1="830" y1="60" x2="830" y2="480"/>
+          <!-- African village road -->
+          <line x1="750" y1="480" x2="830" y2="480"/>
+          <!-- Entrance roads -->
+          <line x1="385" y1="730" x2="385" y2="780"/>
+          <!-- Arena parking -->
+          <line x1="70" y1="530" x2="70" y2="600"/>
+          <!-- N connector -->
+          <line x1="200" y1="60" x2="200" y2="200"/>
+          <line x1="200" y1="200" x2="200" y2="440"/>
+        </g>
+
+        <!-- Road center dashes (white dashes) -->
+        <g stroke="rgba(255,255,255,0.12)" stroke-width="1.5" stroke-dasharray="12,10">
+          <line x1="385" y1="730" x2="385" y2="60"/>
+          <line x1="120" y1="60" x2="830" y2="60"/>
+          <line x1="200" y1="340" x2="750" y2="340"/>
+          <line x1="70" y1="440" x2="750" y2="440"/>
+          <line x1="70" y1="530" x2="750" y2="530"/>
+        </g>
+
+        <!-- Road labels -->
+        <text x="295" y="335" fill="rgba(200,180,120,0.3)" font-size="10" font-family="Georgia" font-style="italic" text-anchor="middle">Queen Aderonke Boulevard</text>
+
+        <!-- Green areas / grass patches -->
+        <ellipse cx="650" cy="700" rx="60" ry="30" fill="#1A3010" opacity="0.5"/>
+        <ellipse cx="150" cy="700" rx="50" ry="25" fill="#1A3010" opacity="0.4"/>
+        <ellipse cx="850" cy="400" rx="30" ry="50" fill="#1A3010" opacity="0.4"/>
+
+        <!-- Decorative trees -->
+        <use href="#tree" transform="translate(50,720) scale(1.4)"/>
+        <use href="#tree" transform="translate(140,680) scale(1.2)"/>
+        <use href="#tree" transform="translate(210,720) scale(1.0)"/>
+        <use href="#tree" transform="translate(600,700) scale(1.3)"/>
+        <use href="#tree" transform="translate(680,730) scale(1.1)"/>
+        <use href="#tree" transform="translate(800,680) scale(1.2)"/>
+        <use href="#tree" transform="translate(870,200) scale(1.3)"/>
+        <use href="#tree" transform="translate(880,450) scale(1.0)"/>
+        <use href="#tree" transform="translate(30,200) scale(1.2)"/>
+        <use href="#tree" transform="translate(30,380) scale(1.0)"/>
+        <use href="#tree" transform="translate(500,700) scale(1.1)"/>
+        <use href="#tree" transform="translate(550,45) scale(0.9)"/>
+        <use href="#tree" transform="translate(860,60) scale(1.0)"/>
+        <use href="#tree" transform="translate(310,760) scale(1.0)"/>
+        <use href="#tree" transform="translate(460,760) scale(1.0)"/>
+
+        <!-- Closed Road label -->
+        <text x="58" y="490" fill="rgba(200,180,120,0.25)" font-size="9" font-family="Georgia" font-style="italic" writing-mode="tb">Closed Road</text>
+
+        <!-- Road to African Village -->
+        <text x="680" y="760" fill="rgba(200,180,120,0.25)" font-size="9" font-family="Georgia" font-style="italic">Road to African Village</text>
+      </svg>
+
+      <!-- GPS DOT -->
+      <div id="gps-dot-wrap">
+        <div id="gps-ring"></div>
+        <div id="gps-core"></div>
+      </div>
+    </div>
+
+    <!-- Overlays -->
+    <div id="compass"><span>N</span><span>↑</span></div>
+    <div id="zoom-btns">
+      <button class="zoom-btn" onclick="zoom(1.25)">+</button>
+      <button class="zoom-btn" onclick="zoom(0.8)">−</button>
+    </div>
+    <div id="legend">
+      <div class="legend-title">Legend</div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--chalet)"></div><span class="legend-label">Chalet</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--amenity)"></div><span class="legend-label">Amenity</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--sports)"></div><span class="legend-label">Sports</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--cultural)"></div><span class="legend-label">Cultural</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--admin)"></div><span class="legend-label">Admin</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--landmark)"></div><span class="legend-label">Landmark</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#1E90FF"></div><span class="legend-label">You are here</span></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM SHEET / SIDEBAR -->
+  <div id="sheet">
+    <div id="sheet-handle"></div>
+
+    <!-- default state -->
+    <div id="sheet-default" style="padding:24px 18px; text-align:center;">
+      <div style="font-size:36px;margin-bottom:10px;">🗺️</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--gold-light);margin-bottom:6px;">Welcome to Ojaja Resort</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;">Tap any marker on the map to see directions. Enable <strong style="color:var(--gold)">Live Location</strong> to see where you are.</div>
+      <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;">
+        <div style="font-size:11px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">Quick Access</div>
+        <div id="quick-list" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;"></div>
+      </div>
+    </div>
+
+    <!-- selected location state -->
+    <div id="sheet-detail" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+      <div id="sheet-head">
+        <div style="display:flex;gap:10px;align-items:flex-start;flex:1;">
+          <span id="sheet-icon">🏠</span>
+          <div>
+            <div id="sheet-title">Location Name</div>
+            <div id="sheet-cat">Category</div>
+          </div>
+        </div>
+        <button id="sheet-close" onclick="closeSheet()">✕</button>
+      </div>
+      <button id="dir-btn" onclick="toggleDirections()">
+        <span>🗺</span> <span id="dir-btn-text">Get Directions</span>
+      </button>
+      <div id="directions-wrap" style="display:none;">
+        <div id="dir-from"></div>
+        <div id="dir-steps"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────────
+const CAT = {
+  chalet:   { color:'#D4782A', icon:'🏠', label:'Chalet'    },
+  amenity:  { color:'#2A8FA8', icon:'✨', label:'Amenity'   },
+  sports:   { color:'#3A9E5A', icon:'⚽', label:'Sports'    },
+  cultural: { color:'#9B6BB5', icon:'🎨', label:'Cultural'  },
+  admin:    { color:'#B8860B', icon:'🏢', label:'Admin'      },
+  landmark: { color:'#C0392B', icon:'📍', label:'Landmark'  },
+}
+
+// x,y as % of 900×780 SVG canvas
+const LOCS = [
+  { id:'entrance',      name:'Entrance Gate',                 cat:'landmark', x:385, y:740 },
+  { id:'roundabout_s',  name:'Roundabout (South)',            cat:'landmark', x:385, y:680 },
+  { id:'roundabout_c',  name:'Roundabout (Central)',          cat:'landmark', x:385, y:610 },
+  { id:'reception',     name:'Reception',                     cat:'admin',    x:280, y:590 },
+  { id:'kitchen',       name:'Kitchen',                       cat:'amenity',  x:280, y:510 },
+  { id:'bar',           name:'Bar and Restaurant',            cat:'amenity',  x:530, y:520 },
+  { id:'love_garden',   name:'Love Garden',                   cat:'amenity',  x:530, y:590 },
+  { id:'pool_b',        name:'Swimming Pool',                 cat:'amenity',  x:640, y:570 },
+  { id:'arena',         name:'Ojaja Arena',                   cat:'sports',   x:120, y:440 },
+  { id:'moremi',        name:'Moremi Chalet',                 cat:'chalet',   x:310, y:480 },
+  { id:'oranmiyan',     name:'Oranmiyan Chalet',              cat:'chalet',   x:500, y:490 },
+  { id:'alara',         name:'Alara Chalet',                  cat:'chalet',   x:310, y:400 },
+  { id:'ajero',         name:'Ajero Chalet',                  cat:'chalet',   x:310, y:340 },
+  { id:'kiddies',       name:'Kiddies Park',                  cat:'amenity',  x:175, y:390 },
+  { id:'adire_gallery', name:'Adire Gallery',                 cat:'cultural', x:155, y:320 },
+  { id:'orangun',       name:'Orangun Chalet',                cat:'chalet',   x:490, y:390 },
+  { id:'owa',           name:'Owa Chalet',                    cat:'chalet',   x:490, y:290 },
+  { id:'awujale',       name:'Awujale Chalet',                cat:'chalet',   x:610, y:390 },
+  { id:'onisabe',       name:'Onisabe Chalet',                cat:'chalet',   x:620, y:450 },
+  { id:'onipopo',       name:'Onipopo Chalet',                cat:'chalet',   x:620, y:500 },
+  { id:'two_bed',       name:'2 Bedroom Chalet',              cat:'chalet',   x:720, y:490 },
+  { id:'african_vil',   name:'African Village Entrance',      cat:'landmark', x:755, y:540 },
+  { id:'laundry',       name:'Laundry',                       cat:'amenity',  x:660, y:330 },
+  { id:'bush_bar',      name:'Bush Bar',                      cat:'amenity',  x:720, y:400 },
+  { id:'pool_t',        name:'Swimming Pool (Upper)',         cat:'amenity',  x:790, y:400 },
+  { id:'cinema',        name:'Ojaja Cinema',                  cat:'amenity',  x:790, y:300 },
+  { id:'old_ooni',      name:'Old Ooni Chalet',               cat:'chalet',   x:310, y:255 },
+  { id:'king_sunny',    name:'King Sunny Ade Chalet',         cat:'chalet',   x:410, y:185 },
+  { id:'iyalaje',       name:'Iyalaje Chalet',                cat:'chalet',   x:500, y:220 },
+  { id:'olubadan',      name:'Olubadan Chalet',               cat:'chalet',   x:610, y:260 },
+  { id:'tadenikawo',    name:'Tadenikawo Staff Chalet',       cat:'chalet',   x:660, y:210 },
+  { id:'roundabout_n',  name:'Roundabout (North)',            cat:'landmark', x:600, y:130 },
+  { id:'basketball',    name:'Basketball Court',              cat:'sports',   x:155, y:215 },
+  { id:'football',      name:'Football Field',                cat:'sports',   x:155, y:140 },
+  { id:'ojaja_uni',     name:'Ojaja University Liaison',      cat:'admin',    x:385, y:85  },
+  { id:'zuma',          name:'Zuma Chalet',                   cat:'chalet',   x:505, y:75  },
+  { id:'olowu',         name:'Olowu Chalet',                  cat:'chalet',   x:600, y:55  },
+  { id:'onibeju',       name:'Onibeju Chalet',                cat:'chalet',   x:680, y:68  },
+  { id:'three_bed',     name:'3 Bedroom Chalet',              cat:'chalet',   x:760, y:55  },
+  { id:'ostrich',       name:'Ostrich Farm',                  cat:'amenity',  x:850, y:75  },
+  { id:'adire_factory', name:'Adire Factory',                 cat:'cultural', x:820, y:135 },
+]
+
+const DIRS = {
+  reception:    ["Start at the Entrance Gate","Go straight north through both roundabouts","Turn left (west) at the Central Roundabout","Reception is immediately on your right"],
+  kitchen:      ["Start at the Entrance Gate","Go north through both roundabouts","Turn left at Central Roundabout past Reception","Kitchen is ahead on the left side"],
+  bar:          ["Start at the Entrance Gate","Go north through both roundabouts","At the Central Roundabout continue straight east","Bar & Restaurant is on your right"],
+  love_garden:  ["Start at the Entrance Gate","Go north through both roundabouts","Head east at Central Roundabout","Love Garden is just south of the Bar & Restaurant"],
+  pool_b:       ["Start at the Entrance Gate","Go north through both roundabouts","Head east past Bar & Restaurant","Swimming Pool is at the far east end of this road"],
+  arena:        ["Start at the Entrance Gate","Go north through both roundabouts","At Central Roundabout turn left (west)","Follow the road west — Ojaja Arena is at the end"],
+  moremi:       ["Start at the Entrance Gate","Go north through both roundabouts","Continue north on the main road","Moremi Chalet is on the right side"],
+  oranmiyan:    ["Start at the Entrance Gate","Go north through both roundabouts","Continue north on the main road","Oranmiyan Chalet is on the right, further along"],
+  alara:        ["Start at the Entrance Gate","Go north through roundabouts","Continue north on the main road","Turn onto Queen Aderonke Boulevard (east)","Alara Chalet is on the left side"],
+  ajero:        ["Start at the Entrance Gate","Go north through roundabouts","Continue north on main road to Queen Aderonke Boulevard","Ajero Chalet is on the left, just before Alara"],
+  kiddies:      ["Start at the Entrance Gate","Go north through roundabouts","Turn left (west) before the Boulevard","Kiddies Park is on the left side"],
+  adire_gallery:["Start at the Entrance Gate","Go north through roundabouts","Head west on the side road","Adire Gallery is further west on the left"],
+  orangun:      ["Start at the Entrance Gate","Go north through roundabouts","Continue north on main road","Turn east on Queen Aderonke Boulevard","Orangun Chalet is on the right"],
+  owa:          ["Start at the Entrance Gate","Go north through roundabouts","Continue north past Queen Aderonke Blvd","Owa Chalet is on the right side"],
+  awujale:      ["Start at the Entrance Gate","Go north through roundabouts","Head east on Queen Aderonke Boulevard","Awujale Chalet is on the right side"],
+  onisabe:      ["Start at the Entrance Gate","Go north through roundabouts","Head east, then take the road going north-east","Onisabe Chalet is on the right"],
+  onipopo:      ["Start at the Entrance Gate","Go north through roundabouts","Head east on the mid road","Onipopo Chalet is adjacent to Onisabe"],
+  two_bed:      ["Start at the Entrance Gate","Go north through roundabouts","Head east along the upper road","2 Bedroom Chalet is near the African Village Entrance"],
+  african_vil:  ["Start at the Entrance Gate","Go north then head east","Follow the road sign towards African Village","African Village Entrance is at the east end"],
+  laundry:      ["Start at the Entrance Gate","Go north through roundabouts","Head east on Queen Aderonke Boulevard","Laundry is on the right, before Bush Bar"],
+  bush_bar:     ["Start at the Entrance Gate","Go north through roundabouts","Head east on Queen Aderonke Boulevard","Bush Bar is on the right, past the Laundry"],
+  pool_t:       ["Start at the Entrance Gate","Go north through roundabouts","Head east past Bush Bar","Swimming Pool (Upper) is at the far eastern end"],
+  cinema:       ["Start at the Entrance Gate","Go north through roundabouts","Head east, then take the road going north","Ojaja Cinema is on the right side"],
+  old_ooni:     ["Start at the Entrance Gate","Go north through both roundabouts","Continue north past Queen Aderonke Blvd","Old Ooni Chalet is on the left side of the road"],
+  king_sunny:   ["Start at the Entrance Gate","Go north all the way up the main road","King Sunny Ade Chalet is on the right before the top junction"],
+  iyalaje:      ["Start at the Entrance Gate","Go north to the upper section of the resort","Head east at the top road","Iyalaje Chalet is on the right"],
+  olubadan:     ["Start at the Entrance Gate","Go north to the upper section","Head east past Iyalaje","Olubadan Chalet is further east on the right"],
+  tadenikawo:   ["Start at the Entrance Gate","Go north to the top road","Head east towards the North Roundabout","Tadenikawo Staff Chalet is just south of the roundabout"],
+  roundabout_n: ["Start at the Entrance Gate","Follow the main road north all the way","Roundabout (North) is at the very top junction"],
+  basketball:   ["Start at the Entrance Gate","Go north through roundabouts","Head west and then north on the side road","Basketball Court is on the left next to Football Field"],
+  football:     ["Start at the Entrance Gate","Go north through roundabouts","Head west and north on the side road","Football Field is at the far north-west corner"],
+  ojaja_uni:    ["Start at the Entrance Gate","Follow the main road straight north","Continue to the top — Ojaja University Liaison Office is on the left"],
+  zuma:         ["Start at the Entrance Gate","Go north to the top road junction","Head east on the northern road","Zuma Chalet is on the right"],
+  olowu:        ["Start at the Entrance Gate","Go north to the top road","Head east past Zuma Chalet","Olowu Chalet is further east on the right"],
+  onibeju:      ["Start at the Entrance Gate","Go north to the top road","Head east past the North Roundabout","Onibeju Chalet is on the right side"],
+  three_bed:    ["Start at the Entrance Gate","Go north to the top road","Head east all the way to the far side","3 Bedroom Chalet is in the far north-east section"],
+  ostrich:      ["Start at the Entrance Gate","Go north then head east on the top road","Continue east to the far boundary","Ostrich Farm is in the far north-east corner"],
+  adire_factory:["Start at the Entrance Gate","Go north then east on the upper road","Adire Factory is on the right near the eastern boundary"],
+}
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let scale = 1, offsetX = 0, offsetY = 0
+let selectedId = null
+let activeFilter = 'all'
+let searchQuery = ''
+let gpsWatchId = null
+let gpsActive = false
+let dirOpen = false
+// Map size
+const MW = 900, MH = 780
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  fitMap()
+  renderMarkers()
+  buildQuickList()
+  setupPan()
+  setupSearch()
+  setupFilters()
+  setTimeout(() => document.getElementById('loader').classList.add('hide'), 1400)
+})
+
+function fitMap() {
+  const wrap = document.getElementById('map-wrap')
+  const W = wrap.clientWidth, H = wrap.clientHeight
+  scale = Math.min(W / MW, H / MH) * 0.95
+  offsetX = (W - MW * scale) / 2
+  offsetY = (H - MH * scale) / 2
+  applyTransform()
+}
+
+function applyTransform() {
+  const c = document.getElementById('map-canvas')
+  c.style.transform = `translate(${offsetX}px,${offsetY}px) scale(${scale})`
+}
+
+// ── MARKERS ───────────────────────────────────────────────────────────────────
+function renderMarkers() {
+  // Remove old
+  document.querySelectorAll('.marker').forEach(m => m.remove())
+  const canvas = document.getElementById('map-canvas')
+
+  LOCS.forEach(loc => {
+    const cfg = CAT[loc.cat]
+    const el = document.createElement('div')
+    el.className = 'marker'
+    el.id = 'marker-' + loc.id
+    el.style.left = loc.x + 'px'
+    el.style.top  = loc.y + 'px'
+
+    el.innerHTML = `
+      <div class="marker-dot" style="background:${cfg.color};border-color:rgba(255,255,255,0.5)">
+        <span>${cfg.icon}</span>
+      </div>
+      <div class="marker-label">${loc.name}</div>
+    `
+    el.addEventListener('click', e => { e.stopPropagation(); selectLocation(loc.id) })
+    canvas.appendChild(el)
+  })
+  applyFilter()
+}
+
+function applyFilter() {
+  LOCS.forEach(loc => {
+    const el = document.getElementById('marker-' + loc.id)
+    if (!el) return
+    const matchSearch = loc.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchFilter = activeFilter === 'all' || loc.cat === activeFilter
+    el.classList.toggle('dimmed', !(matchSearch && matchFilter))
+  })
+}
+
+// ── SELECT ────────────────────────────────────────────────────────────────────
+function selectLocation(id) {
+  // Deselect old
+  if (selectedId) {
+    const old = document.getElementById('marker-' + selectedId)
+    if (old) { old.classList.remove('selected'); old.querySelector('.pulse-ring')?.remove() }
+  }
+
+  if (selectedId === id) {
+    selectedId = null
+    closeSheet()
+    return
+  }
+
+  selectedId = id
+  const el = document.getElementById('marker-' + id)
+  if (el) {
+    el.classList.add('selected')
+    const ring = document.createElement('div')
+    ring.className = 'pulse-ring'
+    const cfg = CAT[LOCS.find(l=>l.id===id).cat]
+    ring.style.color = cfg.color
+    ring.style.borderColor = cfg.color
+    el.querySelector('.marker-dot').appendChild(ring)
+    centerOnMarker(id)
+  }
+  openSheet(id)
+}
+
+function centerOnMarker(id) {
+  const loc = LOCS.find(l => l.id === id)
+  if (!loc) return
+  const wrap = document.getElementById('map-wrap')
+  const W = wrap.clientWidth, H = wrap.clientHeight
+  offsetX = W/2 - loc.x * scale
+  offsetY = H/2 - loc.y * scale - 80
+  clampOffset()
+  applyTransform()
+}
+
+function closeSheet() {
+  selectedId = null
+  dirOpen = false
+  document.querySelectorAll('.marker.selected').forEach(m => {
+    m.classList.remove('selected')
+    m.querySelector('.pulse-ring')?.remove()
+  })
+  document.getElementById('sheet').classList.remove('open')
+  document.getElementById('sheet-default').style.display = 'block'
+  document.getElementById('sheet-detail').style.display = 'none'
+}
+
+function openSheet(id) {
+  const loc = LOCS.find(l => l.id === id)
+  if (!loc) return
+  const cfg = CAT[loc.cat]
+  dirOpen = false
+
+  document.getElementById('sheet-icon').textContent = cfg.icon
+  document.getElementById('sheet-title').textContent = loc.name
+  document.getElementById('sheet-cat').textContent = cfg.label
+  document.getElementById('sheet-cat').style.color = cfg.color
+  document.getElementById('dir-btn-text').textContent = 'Get Directions'
+  document.getElementById('directions-wrap').style.display = 'none'
+
+  document.getElementById('sheet-default').style.display = 'none'
+  document.getElementById('sheet-detail').style.display = 'flex'
+  document.getElementById('sheet').classList.add('open')
+}
+
+// ── DIRECTIONS ────────────────────────────────────────────────────────────────
+function toggleDirections() {
+  dirOpen = !dirOpen
+  const wrap = document.getElementById('directions-wrap')
+  const btn = document.getElementById('dir-btn-text')
+  if (dirOpen) {
+    showDirections()
+    wrap.style.display = 'block'
+    btn.textContent = '▲ Hide Directions'
+  } else {
+    wrap.style.display = 'none'
+    btn.textContent = 'Get Directions'
+  }
+}
+
+function showDirections() {
+  const steps = DIRS[selectedId]
+  const fromLabel = gpsActive ? 'From your current location' : 'From Entrance Gate'
+  document.getElementById('dir-from').textContent = fromLabel
+
+  if (!steps) {
+    document.getElementById('dir-steps').innerHTML = '<div class="step-text" style="color:var(--muted)">Directions not available for this location.</div>'
+    return
+  }
+
+  const stepsArr = gpsActive
+    ? ['Your current location is shown on the map (blue dot)', ...steps.slice(1)]
+    : steps
+
+  document.getElementById('dir-steps').innerHTML = stepsArr.map((s, i) => `
+    <div class="dir-step">
+      <div class="step-num ${i===0?'start':i===stepsArr.length-1?'end':''}">${i===0?'▶':i===stepsArr.length-1?'★':i}</div>
+      <div class="step-text">${s}</div>
+    </div>
+  `).join('')
+}
+
+// ── GPS ───────────────────────────────────────────────────────────────────────
+// The resort's real-world coordinates (center approximation)
+// These are the bounds of your resort map — adjust if needed
+const RESORT_BOUNDS = {
+  minLat:  7.395, maxLat:  7.408,   // ~1.4km N-S
+  minLng: 3.895,  maxLng:  3.912,   // ~1.7km E-W
+}
+
+function latLngToXY(lat, lng) {
+  const px = (lng - RESORT_BOUNDS.minLng) / (RESORT_BOUNDS.maxLng - RESORT_BOUNDS.minLng)
+  const py = 1 - (lat - RESORT_BOUNDS.minLat) / (RESORT_BOUNDS.maxLat - RESORT_BOUNDS.minLat)
+  return { x: px * MW, y: py * MH }
+}
+
+function startGPS() {
+  if (gpsActive) { stopGPS(); return; }
+
+  if (!navigator.geolocation) {
+    showToast('⚠️ GPS not supported on this device')
+    return
+  }
+
+  showToast('📡 Requesting your location…')
+  const btn = document.getElementById('gps-btn')
+  btn.classList.add('active')
+  btn.innerHTML = '<div class="dot"></div> Locating…'
+
+  gpsWatchId = navigator.geolocation.watchPosition(
+    pos => {
+      gpsActive = true
+      btn.innerHTML = '<div class="dot"></div> Live'
+      updateGPSDot(pos.coords.latitude, pos.coords.longitude)
+    },
+    err => {
+      let msg = '⚠️ Location unavailable'
+      if (err.code === 1) msg = '🔒 Location permission denied. Please allow in browser settings.'
+      if (err.code === 2) msg = '📡 GPS signal not found. Try outdoors.'
+      showToast(msg)
+      stopGPS()
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+  )
+}
+
+function stopGPS() {
+  if (gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId)
+  gpsActive = false
+  gpsWatchId = null
+  const btn = document.getElementById('gps-btn')
+  btn.classList.remove('active')
+  btn.innerHTML = '<div class="dot"></div> Live Location'
+  document.getElementById('gps-dot-wrap').classList.remove('visible')
+}
+
+function updateGPSDot(lat, lng) {
+  const { x, y } = latLngToXY(lat, lng)
+  const dot = document.getElementById('gps-dot-wrap')
+  dot.style.left = x + 'px'
+  dot.style.top  = y + 'px'
+  dot.classList.add('visible')
+  showToast('📍 Live location active!')
+}
+
+// ── SEARCH ────────────────────────────────────────────────────────────────────
+function setupSearch() {
+  document.getElementById('search').addEventListener('input', e => {
+    searchQuery = e.target.value
+    applyFilter()
+  })
+}
+
+// ── FILTERS ───────────────────────────────────────────────────────────────────
+function setupFilters() {
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeFilter = btn.dataset.cat
+      const cfg = CAT[activeFilter]
+      document.querySelectorAll('.filter-btn').forEach(b => {
+        b.classList.remove('on')
+        b.style.background = ''
+        b.style.color = ''
+        b.style.borderColor = ''
+      })
+      btn.classList.add('on')
+      if (activeFilter === 'all') {
+        btn.style.background = 'var(--gold)'
+        btn.style.color = '#0E1A0A'
+        btn.style.borderColor = 'var(--gold)'
+      } else {
+        btn.style.background = cfg.color + '30'
+        btn.style.color = cfg.color
+        btn.style.borderColor = cfg.color + '88'
+      }
+      applyFilter()
+    })
+  })
+}
+
+// ── QUICK LIST ────────────────────────────────────────────────────────────────
+function buildQuickList() {
+  const quick = ['reception','bar','pool_b','bush_bar','cinema','arena','adire_gallery','ostrich']
+  const wrap = document.getElementById('quick-list')
+  quick.forEach(id => {
+    const loc = LOCS.find(l => l.id === id)
+    if (!loc) return
+    const cfg = CAT[loc.cat]
+    const btn = document.createElement('button')
+    btn.style.cssText = `padding:6px 10px;border-radius:20px;border:1px solid ${cfg.color}55;background:${cfg.color}18;color:${cfg.color};font-size:12px;cursor:pointer;font-family:'Lato',sans-serif;`
+    btn.textContent = cfg.icon + ' ' + loc.name.split(' ')[0]
+    btn.onclick = () => selectLocation(id)
+    wrap.appendChild(btn)
+  })
+}
+
+// ── PAN & ZOOM ────────────────────────────────────────────────────────────────
+function setupPan() {
+  const wrap = document.getElementById('map-wrap')
+  let dragging = false, lastX = 0, lastY = 0
+  let pinchDist = 0
+
+  wrap.addEventListener('mousedown', e => {
+    if (e.target.closest('.marker')) return
+    dragging = true; lastX = e.clientX; lastY = e.clientY
+  })
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return
+    offsetX += e.clientX - lastX; offsetY += e.clientY - lastY
+    lastX = e.clientX; lastY = e.clientY
+    clampOffset(); applyTransform()
+  })
+  window.addEventListener('mouseup', () => dragging = false)
+
+  // Touch
+  let ts = []
+  wrap.addEventListener('touchstart', e => {
+    ts = [...e.touches]
+    if (e.target.closest('.marker')) return
+    if (ts.length === 2) pinchDist = Math.hypot(ts[0].clientX-ts[1].clientX, ts[0].clientY-ts[1].clientY)
+  }, { passive: true })
+
+  wrap.addEventListener('touchmove', e => {
+    const touches = [...e.touches]
+    if (touches.length === 2 && ts.length === 2) {
+      const newDist = Math.hypot(touches[0].clientX-touches[1].clientX, touches[0].clientY-touches[1].clientY)
+      const factor = newDist / pinchDist
+      const cx = (touches[0].clientX + touches[1].clientX) / 2
+      const cy = (touches[0].clientY + touches[1].clientY) / 2
+      zoomAt(factor, cx, cy)
+      pinchDist = newDist
+    } else if (touches.length === 1 && ts.length === 1) {
+      offsetX += touches[0].clientX - ts[0].clientX
+      offsetY += touches[0].clientY - ts[0].clientY
+      clampOffset(); applyTransform()
+    }
+    ts = touches
+  }, { passive: true })
+
+  // Scroll zoom
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault()
+    const factor = e.deltaY < 0 ? 1.12 : 0.88
+    zoomAt(factor, e.clientX, e.clientY)
+  }, { passive: false })
+}
+
+function zoom(factor) {
+  const wrap = document.getElementById('map-wrap')
+  zoomAt(factor, wrap.clientWidth/2, wrap.clientHeight/2)
+}
+
+function zoomAt(factor, cx, cy) {
+  const newScale = Math.min(Math.max(scale * factor, 0.3), 4)
+  const f = newScale / scale
+  offsetX = cx - f * (cx - offsetX)
+  offsetY = cy - f * (cy - offsetY)
+  scale = newScale
+  clampOffset(); applyTransform()
+}
+
+function clampOffset() {
+  const wrap = document.getElementById('map-wrap')
+  const W = wrap.clientWidth, H = wrap.clientHeight
+  const maxX = W * 0.8, minX = W - MW * scale - W * 0.2
+  const maxY = H * 0.8, minY = H - MH * scale - H * 0.2
+  offsetX = Math.min(maxX, Math.max(minX, offsetX))
+  offsetY = Math.min(maxY, Math.max(minY, offsetY))
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+let toastTimer
+function showToast(msg) {
+  const t = document.getElementById('toast')
+  t.textContent = msg
+  t.classList.add('show')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500)
+}
+
+// Dismiss sheet on map tap
+document.getElementById('map-wrap').addEventListener('click', e => {
+  if (!e.target.closest('.marker') && !e.target.closest('#sheet')) {
+    closeSheet()
+  }
+})
+
+window.addEventListener('resize', fitMap)
+</script>
+</body>
+</html>
